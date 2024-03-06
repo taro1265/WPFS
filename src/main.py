@@ -161,7 +161,7 @@ def parse_arguments(args=None):
 
 	###############		 Model			###############
 
-	parser.add_argument('--model', type=str, choices=['mlp', 'wpfs', 'rf', 'fsnet', 'cae', 'dietnetworks'], default='wpfs')
+	parser.add_argument('--model', type=str, choices=['mlp', 'wpfs', 'rf', 'fsnet', 'cae', 'dietnetworks', 'new_wpfs'], default='wpfs')
 	parser.add_argument('--feature_extractor_dims', type=int, nargs='+', default=[100, 100, 10],
 						help='layer size for the feature extractor. If using a virtual layer,\
 							  the first dimension must match it.')
@@ -185,7 +185,7 @@ def parse_arguments(args=None):
 
 	###############		Weight predictor network		###############
 	parser.add_argument('--wpn_embedding_type', type=str, default='nmf',
-						choices=['histogram', 'feature_values', 'nmf', 'svd'],
+						choices=['histogram', 'feature_values', 'nmf', 'svd', 'dnn'],
 						help='histogram = histogram x means (like FsNet)\
 							  feature_values = randomly pick patients and use their gene expressions as the embedding\
 							  It`s applied over data preprocessed using `embedding_preprocessing`')

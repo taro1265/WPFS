@@ -8,7 +8,7 @@ from sklearn.metrics import balanced_accuracy_score
 
 from sparsity_network import SparsityNetwork
 from weight_predictor_network import WeightPredictorNetwork
-
+from embedding_network import EmbeddingNetwork
 
 
 def get_labels_lists(outputs):
@@ -92,6 +92,13 @@ def create_model(args, data_module=None):
 						wpn_embedding_matrix=wpn_embedding_matrix, spn_embedding_matrix=spn_embedding_matrix)
 
 		return GeneralNeuralNetwork(args, first_layer, None)
+	elif args.model=='new_wpfs':
+		assert args.feature_extractor_dims[0] == args.wpn_layers[-1], "The output size of WPN must be the same as the first layer of the feature extractor."
+		assert data_module != None, "You must specify a data_module to compute the feature embeddings"
+		
+		first_layer = FirstLinearLayer(args, is_diet_layer=True, sparsity=True, input_matrix=wpn_embedding_matrix)
+
+		return GeneralNeuralNetwork(args, first_layer, None)
 	elif args.model=='cae': # Supervised Autoencoder
 		concrete_layer = ConcreteLayer(args, args.num_features, args.feature_extractor_dims[0])
 
@@ -142,7 +149,7 @@ class FirstLinearLayer(nn.Module):
 	- sparsity network (i.e., there's a sparsity network which outputs sparsity weights)
 	"""
 
-	def __init__(self, args, is_diet_layer, sparsity, wpn_embedding_matrix=None, spn_embedding_matrix=None):
+	def __init__(self, args, is_diet_layer, sparsity, wpn_embedding_matrix=None, spn_embedding_matrix=None, input_matrix=None):
 		"""
 		If is_diet_layer==None and sparsity==None, this layers acts as a standard linear layer
 		"""
@@ -151,7 +158,7 @@ class FirstLinearLayer(nn.Module):
 		self.args = args
 		self.is_diet_layer = is_diet_layer
 		self.sparsity = sparsity
-
+		self.enn = EmbeddingNetwork(args, input_matrix.T) if input_matrix is not None else None
 		# DIET LAYER
 		if is_diet_layer:
 			# if diet layer, then initialize a weight predictor network
@@ -182,7 +189,8 @@ class FirstLinearLayer(nn.Module):
 			x: (batch_size x num_features)
 		"""
 		# first layer
-		W = self.wpn() if self.is_diet_layer else self.weights_first_layer # W has size (K x D)
+		E = self.enn() if self.enn is not None else None
+		W = self.wpn(E) if self.is_diet_layer else self.weights_first_layer # W has size (K x D)
 		
 		if self.sparsity_model==None:
 			all_sparsity_weights = None
@@ -190,7 +198,7 @@ class FirstLinearLayer(nn.Module):
 			hidden_rep = F.linear(x, W, self.bias_first_layer)
 		
 		else:
-			all_sparsity_weights = self.sparsity_model() 	# Tensor (D, )
+			all_sparsity_weights = self.sparsity_model(E) 	# Tensor (D, )
 			assert all_sparsity_weights.shape[0]==self.args.num_features and len(all_sparsity_weights.shape)==1
 			W = torch.matmul(W, torch.diag(all_sparsity_weights))
 

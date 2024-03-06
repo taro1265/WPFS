@@ -329,6 +329,9 @@ class DatasetModule(pl.LightningDataModule):
 			H_data = H.data
 			H_data.requires_grad = False
 			return H_data.type(torch.float32)
+		elif embedding_type=='dnn':
+			# calculate embedding matrix later
+			return torch.tensor(X_for_embeddings).type(torch.float32)
 		else:
 			raise Exception("Invalid embedding type")
 
