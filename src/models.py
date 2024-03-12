@@ -9,6 +9,7 @@ from sklearn.metrics import balanced_accuracy_score
 from sparsity_network import SparsityNetwork
 from weight_predictor_network import WeightPredictorNetwork
 from embedding_network import EmbeddingNetwork
+from sklearn.ensemble import RandomForestClassifier
 
 
 def get_labels_lists(outputs):
@@ -87,16 +88,35 @@ def create_model(args, data_module=None):
 	elif args.model == 'wpfs':
 		assert args.feature_extractor_dims[0] == args.wpn_layers[-1], "The output size of WPN must be the same as the first layer of the feature extractor."
 		assert data_module != None, "You must specify a data_module to compute the feature embeddings"
+		class_weights = {}
+		for i, val in enumerate(args.class_weights):
+			class_weights[i] = val
+		model = RandomForestClassifier(n_estimators=args.rf_n_estimators, 
+					min_samples_leaf=args.rf_min_samples_leaf, max_depth=args.rf_max_depth,
+					class_weight=class_weights, max_features='sqrt',
+					random_state=42, verbose=True)
+		model.fit(data_module.X_train, data_module.y_train)
+		gloabl_feature_importance = model.feature_importances_/sum(model.feature_importances_)
 		
 		first_layer = FirstLinearLayer(args, is_diet_layer=True, sparsity=True,
-						wpn_embedding_matrix=wpn_embedding_matrix, spn_embedding_matrix=spn_embedding_matrix)
+						wpn_embedding_matrix=wpn_embedding_matrix, spn_embedding_matrix=spn_embedding_matrix, global_feature_importance=gloabl_feature_importance)
 
 		return GeneralNeuralNetwork(args, first_layer, None)
 	elif args.model=='new_wpfs':
 		assert args.feature_extractor_dims[0] == args.wpn_layers[-1], "The output size of WPN must be the same as the first layer of the feature extractor."
 		assert data_module != None, "You must specify a data_module to compute the feature embeddings"
+
+		class_weights = {}
+		for i, val in enumerate(args.class_weights):
+			class_weights[i] = val
+		model = RandomForestClassifier(n_estimators=args.rf_n_estimators, 
+					min_samples_leaf=args.rf_min_samples_leaf, max_depth=args.rf_max_depth,
+					class_weight=class_weights, max_features='sqrt',
+					random_state=42, verbose=True)
+		model.fit(data_module.X_train, data_module.y_train)
+		gloabl_feature_importance = model.feature_importances_/sum(model.feature_importances_)
 		
-		first_layer = FirstLinearLayer(args, is_diet_layer=True, sparsity=True, input_matrix=wpn_embedding_matrix)
+		first_layer = FirstLinearLayer(args, is_diet_layer=True, sparsity=True, input_matrix=wpn_embedding_matrix, global_feature_importance=gloabl_feature_importance)
 
 		return GeneralNeuralNetwork(args, first_layer, None)
 	elif args.model=='cae': # Supervised Autoencoder
@@ -141,6 +161,30 @@ def create_linear_layers(args, layer_sizes, layers_for_hidden_representation):
 		
 	return encoder_first_part, encoder_second_part
 
+class FeatureSelector(nn.Module):
+	def __init__(self, global_feature_importance, temperature=0.5):
+		super().__init__()
+		self.temperature = temperature
+		self.global_feature_importance = torch.tensor(global_feature_importance, dtype=torch.float32)
+	def forward(self, x):
+		device = x.device
+		epsilon = 1e-8
+		batch_size = x.size(0)
+		input_features = x.size(1)
+		gumbel_noise0 = -torch.log(-torch.log(torch.rand(batch_size, input_features, device=device)))
+		gumbel_noise1 = -torch.log(-torch.log(torch.rand(batch_size, input_features, device=device)))
+		xmin = torch.min(x)
+		xmax = torch.max(x)
+		x -= xmin
+		#x += epsilon
+		x = torch.clamp(x, min=epsilon, max=xmax-xmin-epsilon)
+		logits = torch.stack([torch.log(x)+gumbel_noise1+self.global_feature_importance.to(device), torch.log(xmax-xmin-x)+gumbel_noise0], dim=0)
+		mask = F.gumbel_softmax(logits, tau=self.temperature, hard=True, dim=0)
+		if torch.isnan(logits).any():
+			print(f"NaN detected in logits")
+		if torch.isnan(mask).any():
+			print(f"NaN detected in mask")
+		return x * mask[0]
 
 class FirstLinearLayer(nn.Module):
 	"""
@@ -149,7 +193,7 @@ class FirstLinearLayer(nn.Module):
 	- sparsity network (i.e., there's a sparsity network which outputs sparsity weights)
 	"""
 
-	def __init__(self, args, is_diet_layer, sparsity, wpn_embedding_matrix=None, spn_embedding_matrix=None, input_matrix=None):
+	def __init__(self, args, is_diet_layer, sparsity, wpn_embedding_matrix=None, spn_embedding_matrix=None, input_matrix=None, global_feature_importance=None):
 		"""
 		If is_diet_layer==None and sparsity==None, this layers acts as a standard linear layer
 		"""
@@ -159,6 +203,7 @@ class FirstLinearLayer(nn.Module):
 		self.is_diet_layer = is_diet_layer
 		self.sparsity = sparsity
 		self.enn = EmbeddingNetwork(args, input_matrix.T) if input_matrix is not None else None
+		self.selector = FeatureSelector(global_feature_importance=global_feature_importance) if global_feature_importance is not None else None
 		# DIET LAYER
 		if is_diet_layer:
 			# if diet layer, then initialize a weight predictor network
@@ -191,7 +236,8 @@ class FirstLinearLayer(nn.Module):
 		# first layer
 		E = self.enn() if self.enn is not None else None
 		W = self.wpn(E) if self.is_diet_layer else self.weights_first_layer # W has size (K x D)
-		
+		if self.selector is not None:
+			x = self.selector(x)
 		if self.sparsity_model==None:
 			all_sparsity_weights = None
 
