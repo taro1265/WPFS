@@ -1,7 +1,66 @@
-python src/main.py \
-	--model 'mlp' \
+#!/bin/bash
+datasets=('lung' 'prostate' 'smk' 'toxicity' 'cll')
+
+for dataset in "${datasets[@]}"
+do
+	echo "Running script for $dataset"
+	#python src/main.py \
+	#--model 'wpfs' \
+	#--max_steps 100 \
+	#--dataset "$dataset" \
+	#--use_best_hyperparams \
+	#--experiment_name "wpfs_svd_$dataset" \
+	#--wpn_embedding_type 'svd' \
+	#--batch_size 16 \
+	#--run_repeats_and_cv
+
+	#python src/main.py \
+	#--model 'wpfs' \
+	#--max_steps 100 \
+	#--dataset "$dataset" \
+	#--use_best_hyperparams \
+	#--experiment_name "wpfs_nmf_$dataset" \
+	#--wpn_embedding_type 'nmf' \
+	#--batch_size 16 \
+	#--run_repeats_and_cv
+
+	#python src/main.py \
+	#--model 'experiment1' \
+	#--max_steps 100 \
+	#--dataset "$dataset" \
+	#--use_best_hyperparams \
+	#--experiment_name "ex1_raw_$dataset" \
+	#--wpn_embedding_type 'raw' \
+	#--batch_size 16 \
+	#--run_repeats_and_cv
+
+	python src/main.py \
+	--model 'experiment2' \
 	--max_steps 100 \
-	--dataset 'lung' \
+	--dataset "$dataset" \
 	--use_best_hyperparams \
-	--experiment_name 'test'  # GIVE A UNIQUE EXPERIMENT NAME EACH TIME, ELSE THE EXPERIMENTS WILL OVERLAP
-	# --run_repeats_and_cv \  # if you want to runs 25 runs (5-fold cross-validation with 5 repeats) 
+	--experiment_name "ex2_svd_$dataset" \
+	--wpn_embedding_type 'svd' \
+	--batch_size 16 \
+	--run_repeats_and_cv
+
+	python src/main.py \
+	--model 'experiment2' \
+	--max_steps 100 \
+	--dataset "$dataset" \
+	--use_best_hyperparams \
+	--experiment_name "ex2_nmf_$dataset" \
+	--wpn_embedding_type 'nmf' \
+	--batch_size 16 \
+	--run_repeats_and_cv
+
+	python src/main.py \
+	--model 'experiment3' \
+	--max_steps 100 \
+	--dataset "$dataset" \
+	--use_best_hyperparams \
+	--experiment_name "ex3_raw_$dataset" \
+	--wpn_embedding_type 'raw' \
+	--batch_size 16 \
+	--run_repeats_and_cv
+done

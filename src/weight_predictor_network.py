@@ -1,17 +1,18 @@
 from torch import nn
 
 class WeightPredictorNetwork(nn.Module):
-	def __init__(self, args, embedding_matrix):
+	def __init__(self, args, embedding_matrix=None):
 		"""
 		WPN outputs a "virtual" weight matrix W
 
 		:param nn.Tensor(D, M) embedding_matrix: matrix with the embeddings (D = number of features, M = embedding size)
 		"""
 		super().__init__()
-		print(f"Initializing WPN with embedding_matrix of size {embedding_matrix.size()}")
 		
 		self.args = args
-		self.register_buffer('embedding_matrix', embedding_matrix) # store the static embedding_matrix
+		if embedding_matrix is not None:
+			print(f"Initializing WPN with embedding_matrix of size {embedding_matrix.size()}")
+			self.register_buffer('embedding_matrix', embedding_matrix) # store the static embedding_matrix
 
 
 		layers = []
@@ -33,8 +34,11 @@ class WeightPredictorNetwork(nn.Module):
 			prev_dimension = dim
 
 		self.wpn = nn.Sequential(*layers)
-
-	def forward(self):
-		W = self.wpn(self.embedding_matrix) 	# W has size (D x K)
+		
+	def forward(self, embedding_matrix=None):
+		if embedding_matrix is not None:
+			W = self.wpn(embedding_matrix) 	# W has size (D x K)
+		else:
+			W = self.wpn(self.embedding_matrix) 	# W has size (D x K)
 		
 		return W.T # size K x D
